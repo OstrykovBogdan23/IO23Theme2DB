@@ -207,5 +207,177 @@ SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS;
 
 ```
 
-- RESTfull сервіс для управління даними
+## RESTfull-сервіс
+
+Код серверу (Python, Flask)
+
+### App.py
+```python
+from flask import Flask, request, jsonify
+from config import Config
+from models import db, Data
+
+app = Flask(__name__)
+app.config.from_object(Config)
+db.init_app(app)
+
+tables_created = False
+
+def create_tables():
+    global tables_created
+    if not tables_created:
+        db.create_all()
+        tables_created = True
+
+@app.before_request
+def call_create_tables():
+    create_tables()
+
+@app.route('/data', methods=['POST'])
+def create_data():
+    data = request.get_json()
+    new_data = Data(
+        Date=data['Date'],
+        DataName=data['DataName'],
+        DataFormat=data['DataFormat'],
+        Tag_idTag=data['Tag_idTag'],
+        idData = data['idData']
+
+    )
+    db.session.add(new_data)
+    db.session.commit()
+    return jsonify({"message": "Data created"}), 201
+
+@app.route('/data/<int:id>', methods=['GET'])
+def get_data(id):
+    data = Data.query.get_or_404(id)
+    return jsonify({
+        "idData": data.idData,
+        "Date": data.Date,
+        "DataName": data.DataName,
+        "DataFormat": data.DataFormat,
+        "Tag_idTag": data.Tag_idTag
+    })
+
+@app.route('/data/<int:id>', methods=['PUT'])
+def update_data(id):
+    data = Data.query.get_or_404(id)
+    updated_data = request.get_json()
+    data.Date = updated_data['Date']
+    data.DataName = updated_data['DataName']
+    data.DataFormat = updated_data['DataFormat']
+    data.Tag_idTag = updated_data['Tag_idTag']
+    db.session.commit()
+    return jsonify({"message": "Data updated"}), 200
+
+@app.route('/data/<int:id>', methods=['DELETE'])
+def delete_data(id):
+    data = Data.query.get_or_404(id)
+    db.session.delete(data)
+    db.session.commit()
+    return jsonify({"message": "Data deleted"}), 200
+
+@app.route('/data', methods=['GET'])
+def get_all_data():
+    all_data = Data.query.all()
+    data_list = []
+    for data in all_data:
+        data_item = {
+            "idData": data.idData,
+            "Date": data.Date,
+            "DataName": data.DataName,
+            "DataFormat": data.DataFormat,
+            "Tag_idTag": data.Tag_idTag
+        }
+        data_list.append(data_item)
+    return jsonify(data_list)
+
+@app.route('/data/<int:id>', methods=['PATCH'])
+def partial_update_data(id):
+    data = Data.query.get_or_404(id)
+    updated_data = request.get_json()
+    if 'Date' in updated_data:
+        data.Date = updated_data['Date']
+    if 'DataName' in updated_data:
+        data.DataName = updated_data['DataName']
+    if 'DataFormat' in updated_data:
+        data.DataFormat = updated_data['DataFormat']
+    if 'Tag_idTag' in updated_data:
+        data.Tag_idTag = updated_data['Tag_idTag']
+    db.session.commit()
+    return jsonify({"message": "Data updated partially"}), 200
+
+if __name__ == '__main__':
+    app.run(debug=True)
+```
+### Config.py
+```python
+import os
+
+class Config:
+    SQLALCHEMY_DATABASE_URI = 'mysql+pymysql://root:Politech#2003@localhost/mydb'
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+```
+### Models.py
+```python
+from flask_sqlalchemy import SQLAlchemy
+
+db = SQLAlchemy()
+
+class User(db.Model):
+    __tablename__ = 'User'
+    idUser = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    password = db.Column(db.String(45), nullable=False)
+    login = db.Column(db.String(45), unique=True, nullable=False)
+    username = db.Column(db.String(45), unique=True, nullable=False)
+    email = db.Column(db.String(45), unique=True, nullable=False)
+    roles = db.relationship('Role', backref='user', lazy=True)
+    comments = db.relationship('Comment', backref='user', lazy=True)
+    requests = db.relationship('Request', backref='user', lazy=True)
+
+class Permission(db.Model):
+    __tablename__ = 'Permission'
+    idPermission = db.Column(db.Integer, primary_key=True)
+    Post = db.Column(db.Boolean, nullable=True)
+    Comment = db.Column(db.Boolean, nullable=True)
+    Edit = db.Column(db.Boolean, nullable=True)
+    Delete = db.Column(db.Boolean, nullable=True)
+    roles = db.relationship('Role', backref='permission', lazy=True)
+
+class Role(db.Model):
+    __tablename__ = 'Role'
+    idRole = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    RoleName = db.Column(db.String(45), nullable=True)
+    Permission_idPermission = db.Column(db.Integer, db.ForeignKey('Permission.idPermission'), nullable=False)
+    User_idUser = db.Column(db.Integer, db.ForeignKey('User.idUser'), nullable=False)
+
+class Tag(db.Model):
+    __tablename__ = 'Tag'
+    idTag = db.Column(db.Integer, primary_key=True)
+    TagName = db.Column(db.String(45), nullable=True)
+    data = db.relationship('Data', backref='tag', lazy=True)
+
+class Data(db.Model):
+    __tablename__ = 'Data'
+    idData = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    Date = db.Column(db.DateTime, nullable=True)
+    DataName = db.Column(db.String(45), nullable=True)
+    DataFormat = db.Column(db.String(45), nullable=True)
+    Tag_idTag = db.Column(db.Integer, db.ForeignKey('Tag.idTag'), nullable=False)
+    comments = db.relationship('Comment', backref='data', lazy=True)
+    requests = db.relationship('Request', backref='data', lazy=True)
+
+class Comment(db.Model):
+    __tablename__ = 'Comment'
+    CommentText = db.Column(db.Text, nullable=False)
+    User_idUser = db.Column(db.Integer, db.ForeignKey('User.idUser'), primary_key=True)
+    Data_idData = db.Column(db.Integer, db.ForeignKey('Data.idData'), primary_key=True)
+
+class Request(db.Model):
+    __tablename__ = 'Request'
+    idRequest = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    Type = db.Column(db.String(45), nullable=True)
+    User_idUser = db.Column(db.Integer, db.ForeignKey('User.idUser'), nullable=False)
+    Data_idData = db.Column(db.Integer, db.ForeignKey('Data.idData'), nullable=False)
+```
 
